@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CropLock — Kunci crop gambar Word secara permanen</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --bg:#EDEAE2; --panel:#F7F5EF; --ink:#221F1B; --sub:#6B6357;
+  --accent:#B23A2E; --accent-ink:#F7F5EF; --line:#D9D3C4; --ok:#4B6A52;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#17130F; --panel:#211B15; --ink:#EDE6D8; --sub:#9A8F7C;
+    --accent:#E2593F; --accent-ink:#17130F; --line:#39311F; --ok:#8FB596;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#17130F; --panel:#211B15; --ink:#EDE6D8; --sub:#9A8F7C;
+  --accent:#E2593F; --accent-ink:#17130F; --line:#39311F; --ok:#8FB596;
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  min-height:100vh;
+}
+.wrap{max-width:640px;margin:0 auto;padding:48px 20px 64px}
+header{margin-bottom:36px}
+.logo{display:flex;align-items:baseline;gap:10px}
+.logo b{
+  font-size:30px;font-weight:800;letter-spacing:-0.03em;
+}
+.logo span{font-size:13px;color:var(--accent);font-family:ui-monospace,Menlo,Consolas,monospace}
+p.tag{color:var(--sub);font-size:15px;line-height:1.55;max-width:52ch;margin:14px 0 0}
+.drop{
+  position:relative;border:1px solid var(--line);background:var(--panel);
+  border-radius:2px;padding:56px 24px;text-align:center;cursor:pointer;
+  transition:border-color .15s ease;
+}
+.drop:hover, .drop.hover{border-color:var(--accent)}
+.corner{position:absolute;width:16px;height:16px;border-color:var(--accent)}
+.corner.tl{top:-1px;left:-1px;border-top:2px solid;border-left:2px solid}
+.corner.tr{top:-1px;right:-1px;border-top:2px solid;border-right:2px solid}
+.corner.bl{bottom:-1px;left:-1px;border-bottom:2px solid;border-left:2px solid}
+.corner.br{bottom:-1px;right:-1px;border-bottom:2px solid;border-right:2px solid}
+.drop p{margin:0;font-size:15px}
+.drop .fname{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--accent);font-size:14px;margin-top:8px;word-break:break-all}
+.drop .hint{color:var(--sub);font-size:13px;margin-top:6px}
+input[type=file]{display:none}
+.actions{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap}
+button{
+  font:inherit;font-size:14px;font-weight:600;border:1px solid var(--line);
+  background:transparent;color:var(--ink);padding:11px 20px;border-radius:2px;cursor:pointer;
+}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.4;cursor:default}
+.log{
+  margin-top:28px;background:var(--panel);border:1px solid var(--line);border-radius:2px;
+  padding:16px 18px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
+  line-height:1.7;color:var(--sub);max-height:260px;overflow:auto;white-space:pre-wrap;
+  display:none;
+}
+.log .hit{color:var(--ink)}
+.log .warn{color:var(--accent)}
+.log .done{color:var(--ok)}
+.dl{
+  display:none;margin-top:18px;align-items:center;gap:12px;padding:14px 18px;
+  background:var(--panel);border:1px solid var(--ok);border-radius:2px;
+}
+.dl b{color:var(--ok);font-size:14px}
+.dl a{color:var(--accent);font-weight:700;text-decoration:none;font-size:14px}
+.dl a:hover{text-decoration:underline}
+footer{margin-top:44px;color:var(--sub);font-size:12.5px;line-height:1.6}
+footer a{color:var(--sub)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><b>CropLock</b><span>/word-crop-baker</span></div>
+    <p class="tag">Word menyimpan gambar yang sudah kamu crop dalam keadaan utuh — crop-nya cuma "disembunyikan". CropLock memotong file gambarnya secara fisik sesuai crop yang sudah ada, sepenuhnya di browser kamu — tidak ada file yang terkirim ke server manapun.</p>
+  </header>
+
+  <div class="drop" id="drop">
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+    <p id="dropText">Seret file <b>.docx</b> ke sini, atau klik untuk memilih</p>
+    <div class="fname" id="fname"></div>
+    <div class="hint">Diproses di perangkat kamu sendiri — tidak diunggah kemana-mana</div>
+    <input type="file" id="fileInput" accept=".docx">
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="processBtn" disabled>Kunci Crop</button>
+    <button id="resetBtn" style="display:none">File lain</button>
+  </div>
+
+  <div class="log" id="log"></div>
+  <div class="dl" id="dl">
+    <b>✓ Selesai</b><a id="dlLink" download>Unduh hasil.docx</a>
+  </div>
+
+  <footer>Bekerja untuk gambar yang di-crop lewat fitur Crop bawaan Word (menyimpan info <span style="font-family:ui-monospace,monospace">srcRect</span>). Tampilan dokumen tidak berubah — hanya file gambar di dalamnya yang jadi benar-benar terpotong.</footer>
+</div>
+
+<script>
+const A_NS='http://schemas.openxmlformats.org/drawingml/2006/main';
+const R_NS='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const REL_NS='http://schemas.openxmlformats.org/package/2006/relationships';
+const IMG_REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+const PART_RE=/^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/;
+
+const drop=document.getElementById('drop'), fileInput=document.getElementById('fileInput');
+const fnameEl=document.getElementById('fname'), dropText=document.getElementById('dropText');
+const processBtn=document.getElementById('processBtn'), resetBtn=document.getElementById('resetBtn');
+const logEl=document.getElementById('log'), dlBox=document.getElementById('dl'), dlLink=document.getElementById('dlLink');
+let currentFile=null;
+
+drop.addEventListener('click',()=>fileInput.click());
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('hover')});
+drop.addEventListener('dragleave',()=>drop.classList.remove('hover'));
+drop.addEventListener('drop',e=>{
+  e.preventDefault();drop.classList.remove('hover');
+  if(e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change',()=>{ if(fileInput.files[0]) setFile(fileInput.files[0]); });
+
+function setFile(f){
+  if(!f.name.toLowerCase().endsWith('.docx')){ alert('Pilih file .docx'); return; }
+  currentFile=f;
+  fnameEl.textContent=f.name;
+  dropText.textContent='File siap diproses:';
+  processBtn.disabled=false;
+  dlBox.style.display='none'; logEl.style.display='none'; logEl.innerHTML='';
+}
+
+function log(msg,cls){
+  logEl.style.display='block';
+  const row=document.createElement('div');
+  if(cls) row.className=cls;
+  row.textContent=msg;
+  logEl.appendChild(row);
+  logEl.scrollTop=logEl.scrollHeight;
+}
+
+resetBtn.addEventListener('click',()=>{
+  currentFile=null; fileInput.value='';
+  fnameEl.textContent=''; dropText.textContent='Seret file .docx ke sini, atau klik untuk memilih';
+  processBtn.disabled=true; resetBtn.style.display='none';
+  dlBox.style.display='none'; logEl.style.display='none'; logEl.innerHTML='';
+});
+
+processBtn.addEventListener('click', async ()=>{
+  processBtn.disabled=true; processBtn.textContent='Memproses…';
+  logEl.innerHTML=''; logEl.style.display='block'; dlBox.style.display='none';
+  try{
+    const buf=await currentFile.arrayBuffer();
+    const zip=await JSZip.loadAsync(buf);
+
+    let maxIdx=0;
+    zip.forEach(path=>{
+      const m=path.match(/^word\/media\/image(\d+)\./);
+      if(m) maxIdx=Math.max(maxIdx, parseInt(m[1]));
+    });
+    let nextIdx=maxIdx+1, cropRidCounter=1, totalCropped=0;
+
+    const parser=new DOMParser(), serializer=new XMLSerializer();
+    const partPaths=Object.keys(zip.files).filter(p=>PART_RE.test(p) && !zip.files[p].dir);
+
+    for(const partPath of partPaths){
+      const relsPath=`word/_rels/${partPath.split('/').pop()}.rels`;
+      if(!zip.file(relsPath)) continue;
+
+      const xmlText=await zip.file(partPath).async('string');
+      const relsText=await zip.file(relsPath).async('string');
+      const xmlDoc=parser.parseFromString(xmlText,'application/xml');
+      const relsDoc=parser.parseFromString(relsText,'application/xml');
+
+      const relMap={};
+      Array.from(relsDoc.getElementsByTagNameNS(REL_NS,'Relationship')).forEach(r=>{
+        relMap[r.getAttribute('Id')]={target:r.getAttribute('Target'), mode:r.getAttribute('TargetMode'), el:r};
+      });
+
+      let changedXml=false, changedRels=false;
+      const blips=Array.from(xmlDoc.getElementsByTagNameNS(A_NS,'blip'));
+
+      for(const blip of blips){
+        const embedAttr=blip.getAttributeNodeNS(R_NS,'embed');
+        if(!embedAttr || !relMap[embedAttr.value]) continue;
+        const blipFill=blip.parentNode;
+        let srcRect=null;
+        for(const c of Array.from(blipFill.children)){
+          if(c.namespaceURI===A_NS && c.localName==='srcRect'){ srcRect=c; break; }
+        }
+        if(!srcRect) continue;
+        const l=parseInt(srcRect.getAttribute('l')||'0'), t=parseInt(srcRect.getAttribute('t')||'0');
+        const r=parseInt(srcRect.getAttribute('r')||'0'), b=parseInt(srcRect.getAttribute('b')||'0');
+        if(l===0 && t===0 && r===0 && b===0) continue;
+
+        const rel=relMap[embedAttr.value];
+        if(rel.mode==='External'){ log(`- Lewati gambar eksternal: ${rel.target}`,'warn'); continue; }
+        const imgPath='word/'+rel.target.replace(/^\.?\//,'');
+        const imgFile=zip.file(imgPath);
+        if(!imgFile){ log(`! Gambar tidak ditemukan: ${imgPath}`,'warn'); continue; }
+
+        const imgBlob=await imgFile.async('blob');
+        const url=URL.createObjectURL(imgBlob);
+        const img=await new Promise((res,rej)=>{
+          const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=url;
+        });
+        URL.revokeObjectURL(url);
+        const w=img.naturalWidth, h=img.naturalHeight;
+        let left=Math.round(l/100000*w), top=Math.round(t/100000*h);
+        let right=Math.round(w-r/100000*w), bottom=Math.round(h-b/100000*h);
+        left=Math.max(0,left); top=Math.max(0,top);
+        right=Math.min(w,right); bottom=Math.min(h,bottom);
+        if(right<=left) right=left+1;
+        if(bottom<=top) bottom=top+1;
+        const cw=right-left, ch=bottom-top;
+
+        const canvas=document.createElement('canvas');
+        canvas.width=cw; canvas.height=ch;
+        canvas.getContext('2d').drawImage(img,left,top,cw,ch,0,0,cw,ch);
+
+        const extMatch=imgPath.match(/\.[^.]+$/);
+        const ext=(extMatch?extMatch[0]:'.png').toLowerCase();
+        const mime=ext==='.jpg'||ext==='.jpeg'?'image/jpeg':ext==='.gif'?'image/gif':ext==='.bmp'?'image/bmp':'image/png';
+        const outBlob=await new Promise(res=>canvas.toBlob(res, mime, mime==='image/jpeg'?0.92:undefined));
+
+        const newName=`image${nextIdx++}${ext}`;
+        zip.file(`word/media/${newName}`, outBlob);
+
+        const newRid=`rIdCrop${cropRidCounter++}`;
+        const relEl=relsDoc.createElementNS(REL_NS,'Relationship');
+        relEl.setAttribute('Id',newRid);
+        relEl.setAttribute('Type',IMG_REL);
+        relEl.setAttribute('Target',`media/${newName}`);
+        relsDoc.documentElement.appendChild(relEl);
+        changedRels=true;
+
+        blip.setAttributeNS(R_NS, embedAttr.name, newRid);
+        srcRect.setAttribute('l','0'); srcRect.setAttribute('t','0');
+        srcRect.setAttribute('r','0'); srcRect.setAttribute('b','0');
+        changedXml=true; totalCropped++;
+        log(`✓ ${rel.target} → ${newName} (${cw}×${ch}px)`,'hit');
+      }
+
+      if(changedXml) zip.file(partPath, serializer.serializeToString(xmlDoc));
+      if(changedRels) zip.file(relsPath, serializer.serializeToString(relsDoc));
+    }
+
+    if(totalCropped===0){
+      log('Tidak ditemukan gambar dengan crop aktif di dokumen ini.','warn');
+    } else {
+      log(`Selesai — ${totalCropped} gambar berhasil dikunci croppingnya.`,'done');
+      const outBlob=await zip.generateAsync({type:'blob'});
+      const outName=currentFile.name.replace(/\.docx$/i,'')+'_cropped.docx';
+      dlLink.href=URL.createObjectURL(outBlob);
+      dlLink.download=outName;
+      dlLink.textContent=`Unduh ${outName}`;
+      dlBox.style.display='flex';
+    }
+    resetBtn.style.display='inline-block';
+  }catch(err){
+    log('TERJADI ERROR: '+err.message,'warn');
+    console.error(err);
+  }finally{
+    processBtn.disabled=false; processBtn.textContent='Kunci Crop';
+  }
+});
+</script>
+</body>
+</html>
